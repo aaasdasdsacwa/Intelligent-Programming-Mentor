@@ -1,0 +1,28 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: smart-programming-tutor
+
+  # 数据库连接配置 (请确保你本地开启了 MySQL 并创建了名为 smart_tutor 的数据库)
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/smart_tutor?useSSL=false&useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456 # 改为你本地的数据库密码
+
+  # Redis 配置 (请确保你本地运行了 Redis)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true # 开启下划线自动转驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 打印 SQL 日志，方便开发调试
