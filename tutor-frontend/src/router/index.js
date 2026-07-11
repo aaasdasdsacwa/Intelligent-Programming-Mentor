@@ -1,33 +1,41 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import axios from 'axios'
 
+// 路由表定义
 const routes = [
-    {
-        path: '/',
-        redirect: '/login'
-    },
     {
         path: '/login',
         name: 'Login',
-        component: () => import('../views/login/Index.vue'),
-        meta: { title: '登录 - 智能编程导师' }
+        component: () => import('../views/login/Index.vue')
     },
     {
-        path: '/problems',
-        name: 'Problems',
-        component: () => import('../views/problems/ProblemList.vue'),
-        meta: { title: '题库中心' }
+        // 需要主导航栏的页面都放在 /workspace 这个父路由下
+        path: '/workspace',
+        component: () => import('../components/MainLayout.vue'),
+        redirect: '/workspace/roadmap',
+        children: [
+            {
+                path: 'roadmap',
+                name: 'Roadmap',
+                component: () => import('../views/roadmap/Index.vue')
+            },
+            {
+                path: 'problems',
+                name: 'ProblemList',
+                component: () => import('../views/problems/ProblemList.vue')
+            }
+        ]
     },
     {
+        // 做题工作台需要沉浸式满屏，因此独立出来，不使用 MainLayout
         path: '/problems/:id',
         name: 'ProblemDetail',
-        component: () => import('../views/problems/ProblemDetail.vue'),
-        meta: { title: '在线练习' }
+        component: () => import('../views/problems/ProblemDetail.vue')
     },
     {
-        path: '/roadmap',
-        name: 'Roadmap',
-        component: () => import('../views/roadmap/Index.vue'),
-        meta: { title: '学习路线图' }
+        // 默认重定向到工作空间
+        path: '/:pathMatch(.*)*',
+        redirect: '/workspace/roadmap'
     }
 ]
 
@@ -36,12 +44,22 @@ const router = createRouter({
     routes
 })
 
-// 动态修改浏览器标签页标题
-router.beforeEach((to, from, next) => {
-    if (to.meta.title) {
-        document.title = to.meta.title
+// 简易路由守卫：校验登录状态
+router.beforeEach(async (to, from, next) => {
+    if (to.path === '/login') {
+        next()
+        return
     }
-    next()
+    try {
+        const res = await axios.get('/api/user/get/login')
+        if (res.data.code === 0) {
+            next()
+        } else {
+            next('/login')
+        }
+    } catch (err) {
+        next('/login')
+    }
 })
 
 export default router

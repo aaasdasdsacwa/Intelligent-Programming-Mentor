@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
@@ -8,7 +8,7 @@ const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
 
-// 分页与筛选表单
+// 联合筛选与分页表单
 const queryForm = ref({
   current: 1,
   pageSize: 10,
@@ -20,7 +20,12 @@ const queryForm = ref({
 const total = ref(0)
 const problems = ref([])
 
-// 加载题目列表 (分页查询)
+// 计算属性：当前是否处于路线图关卡锁定过滤模式
+const isFilterMode = computed(() => {
+  return !!route.query.tag
+})
+
+// 分页与条件加载列表
 const fetchProblemList = async () => {
   loading.value = true
   try {
@@ -29,16 +34,15 @@ const fetchProblemList = async () => {
       problems.value = res.data.data.records
       total.value = res.data.data.total
     } else {
-      ElMessage.error(res.data.message || '加载题库失败')
+      ElMessage.error(res.data.message || '加载题库列表失败')
     }
   } catch (err) {
-    ElMessage.error('无法连接后端服务')
+    ElMessage.error('无法连接后端服务，请检查网络或后端是否开启')
   } finally {
     loading.value = false
   }
 }
 
-// 监听路由参数变化（如点击不同路线节点重新检索题目）
 watch(() => route.query.tag, (newTag) => {
   if (newTag) {
     queryForm.value.tags = newTag
@@ -49,7 +53,7 @@ watch(() => route.query.tag, (newTag) => {
   fetchProblemList()
 }, { immediate: true })
 
-// 点击重置按钮
+// 重置查询条件
 const handleReset = () => {
   queryForm.value = {
     current: 1,
@@ -58,18 +62,29 @@ const handleReset = () => {
     difficulty: '',
     tags: ''
   }
-  // 移除浏览器 URL 的 query 标签
-  router.push('/problems')
-  fetchProblemList()
+  if (route.query.tag) {
+    router.push('/workspace/problems')
+  } else {
+    fetchProblemList()
+  }
 }
 
-// 跳到在线练习页
-const handlePractice = (problemId) => {
+const handleClearTagFilter = () => {
+  queryForm.value.tags = ''
+  router.push('/workspace/problems')
+}
+
+const handleGoPractice = (problemId) => {
   router.push(`/problems/${problemId}`)
 }
 
+const handleQuickSearchTag = (tag) => {
+  queryForm.value.tags = tag
+  queryForm.value.current = 1
+  fetchProblemList()
+}
+
 onMounted(() => {
-  // 如果 URL 含有标签就先过滤，没有就查全部
   if (route.query.tag) {
     queryForm.value.tags = route.query.tag
   }
@@ -78,135 +93,176 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="problem-list-container">
-    <header class="navbar">
-      <div class="logo" @click="router.push('/roadmap')" style="cursor:pointer">
-        <el-icon size="24" color="#409EFF"><Platform /></el-icon>
-        <span>智能编程导师系统</span>
-      </div>
-      <el-button type="primary" link @click="router.push('/roadmap')">← 返回路线图</el-button>
-    </header>
+  <div class="problems-page">
+    <div class="problems-container">
 
-    <main class="main-content">
-      <el-card class="table-card">
-        <!-- 搜索与筛选表单栏 -->
-        <div class="filter-bar">
-          <el-input v-model="queryForm.title" placeholder="输入题目标题进行搜索" style="width: 200px" @keyup.enter="fetchProblemList" />
-          <el-select v-model="queryForm.difficulty" placeholder="选择难度" style="width: 150px" clearable @change="fetchProblemList">
-            <el-option label="简单 (Easy)" value="easy" />
-            <el-option label="中等 (Medium)" value="medium" />
-            <el-option label="困难 (Hard)" value="hard" />
-          </el-select>
-          <el-input v-model="queryForm.tags" placeholder="标签(如: java)" style="width: 150px" @keyup.enter="fetchProblemList" />
-          <el-button type="primary" icon="Search" @click="fetchProblemList">搜索</el-button>
-          <el-button icon="Refresh" @click="handleReset">重置</el-button>
+      <!-- 路线通关模式联动提示 -->
+      <transition name="el-zoom-in-top">
+        <div class="active-filter-ribbon" v-if="isFilterMode">
+          <div class="ribbon-left">
+            <el-icon class="icon-pulse" color="#fff" size="18"><Aim /></el-icon>
+            <span>当前处于<b>【路线图关卡挑战模式】</b>，系统已为你筛选绑定标签 <code>{{ queryForm.tags }}</code> 的专属评测题目！</span>
+          </div>
+          <el-button type="warning" size="small" icon="CircleClose" @click="handleClearTagFilter">
+            退出挑战模式
+          </el-button>
+        </div>
+      </transition>
+
+      <el-card class="table-card" shadow="never">
+        <!-- 筛选过滤器工具栏 -->
+        <div class="filter-wrapper">
+          <div class="input-group">
+            <el-input
+                v-model="queryForm.title"
+                placeholder="搜索题目标题..."
+                style="width: 200px"
+                clearable
+                prefix-icon="Search"
+                @keyup.enter="fetchProblemList"
+                @clear="fetchProblemList"
+            />
+
+            <el-select
+                v-model="queryForm.difficulty"
+                placeholder="选择题目难度"
+                style="width: 140px"
+                clearable
+                @change="fetchProblemList"
+            >
+              <el-option label="简单 (Easy)" value="easy" />
+              <el-option label="中等 (Medium)" value="medium" />
+              <el-option label="困难 (Hard)" value="hard" />
+            </el-select>
+
+            <el-input
+                v-model="queryForm.tags"
+                placeholder="标签筛选 (如: java)"
+                style="width: 160px"
+                clearable
+                prefix-icon="PriceTag"
+                @keyup.enter="fetchProblemList"
+                @clear="fetchProblemList"
+            />
+          </div>
+
+          <div class="btn-group">
+            <el-button type="primary" icon="Search" @click="fetchProblemList">查询</el-button>
+            <el-button icon="Refresh" @click="handleReset">重置</el-button>
+          </div>
         </div>
 
-        <!-- 题目列表表格 -->
-        <el-table :data="problems" v-loading="loading" style="width: 100%" stripe>
-          <el-table-column prop="id" label="题目ID" width="100" />
-          <el-table-column prop="title" label="题目标题">
+        <!-- 核心题目数据表格 -->
+        <el-table
+            v-loading="loading"
+            :data="problems"
+            style="width: 100%"
+            stripe
+            class="custom-table"
+        >
+          <el-table-column prop="id" label="编号" width="90" align="center" />
+
+          <el-table-column prop="title" label="题目标题" min-width="200">
             <template #default="scope">
-              <span class="problem-title-btn" @click="handlePractice(scope.row.id)">{{ scope.row.title }}</span>
+              <span class="problem-title-click" @click="handleGoPractice(scope.row.id)">
+                {{ scope.row.title }}
+              </span>
             </template>
           </el-table-column>
-          <el-table-column prop="difficulty" label="难度" width="120">
+
+          <el-table-column prop="difficulty" label="难度等级" width="130" align="center">
             <template #default="scope">
-              <el-tag v-if="scope.row.difficulty === 'easy'" type="success" effect="dark">简单</el-tag>
-              <el-tag v-else-if="scope.row.difficulty === 'medium'" type="warning" effect="dark">中等</el-tag>
-              <el-tag v-else type="danger" effect="dark">困难</el-tag>
+              <div class="difficulty-indicator">
+                <span
+                    class="indicator-dot"
+                    :class="{
+                    'dot-easy': scope.row.difficulty === 'easy',
+                    'dot-medium': scope.row.difficulty === 'medium',
+                    'dot-hard': scope.row.difficulty === 'hard'
+                  }"
+                ></span>
+                <span class="difficulty-text">
+                  {{ scope.row.difficulty === 'easy' ? '简单' : (scope.row.difficulty === 'medium' ? '中等' : '困难') }}
+                </span>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column prop="tags" label="标签">
+
+          <el-table-column prop="tags" label="匹配知识标签" min-width="180">
             <template #default="scope">
-              <el-tag v-for="tag in (scope.row.tags ? scope.row.tags.split(',') : [])" :key="tag" class="tag-item">
-                {{ tag }}
-              </el-tag>
+              <div class="tags-wrapper">
+                <el-tag
+                    v-for="tag in (scope.row.tags ? scope.row.tags.split(',') : [])"
+                    :key="tag"
+                    size="small"
+                    class="interactive-tag"
+                    @click="handleQuickSearchTag(tag.trim())"
+                >
+                  {{ tag.trim() }}
+                </el-tag>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="150" align="center">
+
+          <el-table-column label="评测状态" width="160" align="center">
             <template #default="scope">
-              <el-button type="primary" size="small" icon="Edit" @click="handlePractice(scope.row.id)">
-                去挑战
+              <el-button
+                  type="primary"
+                  size="small"
+                  icon="Edit"
+                  class="challenge-btn"
+                  @click="handleGoPractice(scope.row.id)"
+              >
+                开始练习
               </el-button>
             </template>
           </el-table-column>
         </el-table>
 
-        <!-- 分页栏 -->
-        <div class="pagination-wrapper">
+        <div class="pagination-footer">
+          <div class="total-summary">
+            共检索到 <b>{{ total }}</b> 道符合条件的题目
+          </div>
           <el-pagination
               v-model:current-page="queryForm.current"
               v-model:page-size="queryForm.pageSize"
               :total="total"
-              layout="total, prev, pager, next"
+              layout="prev, pager, next"
               background
               @current-change="fetchProblemList"
           />
         </div>
       </el-card>
-    </main>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.problem-list-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.navbar {
-  height: 60px;
-  background-color: #fff;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 30px;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.main-content {
-  flex: 1;
-  padding: 30px;
-  background-color: #f8fafc;
-}
-
-.table-card {
-  border-radius: 12px;
-}
-
-.filter-bar {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 25px;
-}
-
-.problem-title-btn {
-  font-weight: bold;
-  color: #409EFF;
-  cursor: pointer;
-}
-
-.problem-title-btn:hover {
-  text-decoration: underline;
-}
-
-.tag-item {
-  margin-right: 5px;
-}
-
-.pagination-wrapper {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 25px;
-}
+.problems-page { padding: 24px; }
+.problems-container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.active-filter-ribbon { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border-radius: 12px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2); }
+.ribbon-left { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.ribbon-left code { background-color: rgba(255, 255, 255, 0.2); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
+.icon-pulse { animation: pulse 1.5s infinite; }
+.table-card { border-radius: 16px; border: 1px solid #e2e8f0; }
+.filter-wrapper { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px dashed #f1f5f9; padding-bottom: 18px; }
+.input-group { display: flex; gap: 12px; }
+.btn-group { display: flex; gap: 10px; }
+.custom-table { border-radius: 8px; overflow: hidden; }
+.problem-title-click { font-weight: bold; color: #3b82f6; cursor: pointer; transition: color 0.2s; }
+.problem-title-click:hover { color: #1d4ed8; text-decoration: underline; }
+.difficulty-indicator { display: inline-flex; align-items: center; gap: 8px; }
+.indicator-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-easy { background-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+.dot-medium { background-color: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+.dot-hard { background-color: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+.difficulty-text { font-size: 13.5px; color: #334155; }
+.tags-wrapper { display: flex; flex-wrap: wrap; gap: 6px; }
+.interactive-tag { cursor: pointer; transition: all 0.2s; }
+.interactive-tag:hover { transform: scale(1.05); background-color: #3b82f6; color: #fff; }
+.pagination-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; }
+.total-summary { font-size: 13.5px; color: #64748b; }
+.total-summary b { color: #0f172a; }
+.challenge-btn { border-radius: 6px; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
 </style>
