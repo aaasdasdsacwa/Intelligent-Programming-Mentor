@@ -1,0 +1,41 @@
+# ==========================================
+# 1. 忽略系统与 IDE 个人配置文件
+# ==========================================
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+smart-programming-tutor-group.iml
+
+# ==========================================
+# 2. 忽略后端 Spring Boot / Maven 编译与临时文件
+# ==========================================
+target/
+*.class
+*.log
+.mvn/
+mvnw
+mvnw.cmd
+
+# 🌟 核心定制：忽略本地判题沙箱运行产生的 temp 临时代码目录，防止碎文件污染仓库
+/smart-programming-tutor/temp/
+temp/
+tempCode/
+
+# ==========================================
+# 3. 忽略前端 Vue 3 / Vite / Node 相关依赖和打包
+# ==========================================
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ==========================================
+# 4. 忽略本地开发配置文件
+# ==========================================
+.env.development.local
+.env.production.local
+.env.local
