@@ -18,7 +18,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.tutor.smart.model.dto.SubmitQueryRequest;
 /**
  * 核心判题服务控制器
  */
@@ -68,7 +69,14 @@ public class JudgeController {
 
         return ResultUtils.success(executeCodeResponse);
     }
-
+    @PostMapping("/list/page")
+    public BaseResponse<Page<SubmitVO>> listSubmitByPage(@RequestBody SubmitQueryRequest queryRequest, HttpServletRequest request) {
+        if (queryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Page<SubmitVO> submitPage = judgeService.listSubmitByPage(queryRequest, request);
+        return ResultUtils.success(submitPage);
+    }
     /**
      * 🌟 辅助内部类：用于无缝对接前端传来的 JSON DTO 结构
      */

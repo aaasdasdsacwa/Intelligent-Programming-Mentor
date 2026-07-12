@@ -23,6 +23,11 @@ const routes = [
                 path: 'problems',
                 name: 'ProblemList',
                 component: () => import('../views/problems/ProblemList.vue')
+            },
+            {
+                path: 'submissions',
+                name: 'SubmissionHistory',
+                component: () => import('../views/problems/SubmissionHistory.vue')
             }
         ]
     },

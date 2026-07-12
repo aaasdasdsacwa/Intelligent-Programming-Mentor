@@ -71,3 +71,20 @@ VALUES
 
     (3, '斐波那契数列第 N 项', '求出斐波那契数列第 N 项的值。\n斐波那契数列定义如下：\nF(0) = 0, F(1) = 1\nF(N) = F(N-1) + F(N-2) (N >= 2)\n\n【输入格式】\n输入一个非负整数 N（0 <= N <= 30）。\n\n【输出格式】\n输出第 N 项的斐波那契数。\n\n【输入样例】\n6\n\n【输出样例】\n8', '6', '8', 'medium', 'java,algorithm');
 ALTER TABLE `path_node` ADD COLUMN `detail` TEXT NULL COMMENT '知识点简单介绍缓存';
+CREATE TABLE IF NOT EXISTS `question_submit` (
+                                                 `id` BIGINT AUTO_INCREMENT COMMENT '提交ID',
+                                                 `language` VARCHAR(128) NOT NULL COMMENT '编程语言',
+    `code` TEXT NOT NULL COMMENT '提交代码',
+    -- 评测状态：0-通过(Accepted), 1-答案错误(WA), 2-编译错误(CE), 3-运行时异常(RE), 4-运行超时(TLE)
+    `status` INT NOT NULL DEFAULT 0 COMMENT '评测状态',
+    `error_msg` TEXT DEFAULT NULL COMMENT '报错日志信息',
+    `run_time` BIGINT DEFAULT NULL COMMENT '运行时间(ms)',
+    `problem_id` BIGINT NOT NULL COMMENT '关联题目ID',
+    `user_id` BIGINT NOT NULL COMMENT '关联用户ID',
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+    `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `is_deleted` TINYINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    KEY `idx_problem_id` (`problem_id`),
+    KEY `idx_user_id` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题目提交历史表';

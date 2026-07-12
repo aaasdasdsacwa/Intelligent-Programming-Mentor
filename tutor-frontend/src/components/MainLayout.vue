@@ -140,6 +140,11 @@ onMounted(() => {
           <el-icon><Document /></el-icon>
           <span>📚 标准题库中心</span>
         </el-menu-item>
+        <!-- 🌟 新增：挂载个人评测历史选项卡 -->
+        <el-menu-item index="/workspace/submissions">
+          <el-icon><Clock /></el-icon>
+          <span>📜 个人评测历史</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
