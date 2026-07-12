@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Docker 安全代码沙箱实现类（终极稳定重定向版）
+ * Docker 多语言通用安全代码沙箱实现类（工业级闭环版）
  */
 @Service
 @Slf4j
@@ -31,8 +31,6 @@ public class DockerSandboxImpl implements CodeSandbox {
     @Autowired
     private DockerClient dockerClient;
 
-    // 默认评测的 JRE 镜像（对应我们打好本地标签的openjdk:17-alpine）
-    private static final String DOCKER_IMAGE = "openjdk:17-alpine";
     // 运行超时设置 5 秒
     private static final long TIME_LIMIT = 5000L;
 
@@ -40,85 +38,95 @@ public class DockerSandboxImpl implements CodeSandbox {
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
         String code = executeCodeRequest.getCode();
         String inputCase = executeCodeRequest.getInputCase();
+        String language = executeCodeRequest.getLanguage() != null ? executeCodeRequest.getLanguage().toLowerCase() : "java";
 
-        // 1. 在本地盘符创建隔离的临时文件夹，写入 Main.java
+        // 🌟 1. 动态映射不同编程语言的文件后缀名、Docker 基础镜像以及容器内的编译执行命令 [1]
+        String suffix;
+        String dockerImage;
+        String runCommand;
+
+        switch (language) {
+            case "python":
+                suffix = ".py";
+                dockerImage = "python:3.10-alpine"; // 动态使用官方轻量 Python 镜像 [1]
+                runCommand = "python3 /app/Main.py < /app/input.txt";
+                break;
+            case "cpp":
+                suffix = ".cpp";
+                dockerImage = "frolvlad/alpine-gxx";      // 动态使用官方 Alpine GCC 工具链镜像 [1]
+                // 在 Linux 容器内部进行编译并运行，100% 避开 Windows 与 Linux 跨系统编译二进制不兼容问题 [1]
+                runCommand = "g++ -O3 /app/Main.cpp -o /app/Main && /app/Main < /app/input.txt";
+                break;
+            case "go":
+                suffix = ".go";
+                dockerImage = "golang:1.20-alpine"; // 动态使用官方 Go 环境镜像 [1]
+                runCommand = "go run /app/Main.go < /app/input.txt";
+                break;
+            case "javascript":
+                suffix = ".js";
+                dockerImage = "node:18-alpine";     // 动态使用官方 Node.js 镜像 [1]
+                runCommand = "node /app/Main.js < /app/input.txt";
+                break;
+            case "java":
+            default:
+                suffix = ".java";
+                dockerImage = "openjdk:17-alpine";  // Java 评测镜像
+                runCommand = "javac -encoding utf-8 /app/Main.java && java -cp /app Main < /app/input.txt";
+                break;
+        }
+
+        // 2. 在本地盘符创建隔离的临时文件夹，写入对应的代码源文件 [1]
         String userDir = System.getProperty("user.dir");
         String tempDirPath = userDir + File.separator + "temp" + File.separator + IdUtil.simpleUUID();
-        String sourceFilePath = tempDirPath + File.separator + "Main.java";
+        String sourceFilePath = tempDirPath + File.separator + "Main" + suffix; // 动态后缀名 [1]
         FileUtil.writeString(code, sourceFilePath, StandardCharsets.UTF_8);
 
-        // 🌟 核心改进 1：将标准输入用例直接写入本地临时文件夹中的 input.txt 中
+        // 3. 将标准输入用例写入本地临时文件夹中的 input.txt
         String inputFilePath = tempDirPath + File.separator + "input.txt";
         String safeInput = inputCase != null ? inputCase : "";
         FileUtil.writeString(safeInput, inputFilePath, StandardCharsets.UTF_8);
 
-        // 2. 本地编译 Java 代码
-        String compileCmd = String.format("javac -encoding utf-8 %s", sourceFilePath);
-        try {
-            Process compileProcess = Runtime.getRuntime().exec(compileCmd);
-            int compileExitCode = compileProcess.waitFor();
-            if (compileExitCode != 0) {
-                // 编译失败，提取错误信息并返回编译错误 (CE)
-                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
-                compileProcess.getErrorStream().transferTo(errStream);
-                String errorMsg = errStream.toString(StandardCharsets.UTF_8);
-                // 清理临时文件
-                FileUtil.del(tempDirPath);
-                return ExecuteCodeResponse.builder()
-                        .status(2) // 2 - CE
-                        .errorMsg(errorMsg)
-                        .build();
-            }
-        } catch (Exception e) {
-            log.error("本地编译发生异常: ", e);
-            FileUtil.del(tempDirPath);
-            return ExecuteCodeResponse.builder().status(2).errorMsg("编译系统异常: " + e.getMessage()).build();
-        }
-
-        // 3. 将本地编译好的 Main.class 挂载进隔离的 Docker 容器运行
         String containerId = null;
         try {
-            // 将 Windows 本地路径（D:\java项目\temp\xxx）转换为 Docker 兼容的 POSIX 路径（/d/java项目/temp/xxx） [1]
+            // 将 Windows 本地物理路径（D:\java项目\temp\xxx）转换为 Docker 兼容的 POSIX 路径（/d/java项目/temp/xxx） [1]
             String dockerBindPath = tempDirPath;
             if (System.getProperty("os.name").toLowerCase().contains("win")) {
                 dockerBindPath = dockerBindPath.replace("\\", "/");
                 if (dockerBindPath.contains(":")) {
                     String[] split = dockerBindPath.split(":");
-                    String driveLetter = split[0].toLowerCase(); // 得到 d 或者 c
-                    dockerBindPath = "/" + driveLetter + split[1]; // 拼接为 /d/... [1]
+                    String driveLetter = split[0].toLowerCase();
+                    dockerBindPath = "/" + driveLetter + split[1];
                 }
             }
 
-            log.info("本地挂载物理路径为: {}", tempDirPath);
-            log.info("转换后映射到 Docker 路径为: {}", dockerBindPath);
+            log.info("【沙箱调度】正在为语言 [{}] 调配 Docker 镜像: {}", language, dockerImage);
+            log.info("【沙箱调度】挂载映射路径: {}", dockerBindPath);
 
-            // 配置只读挂载参数：将转换后的 dockerBindPath 挂载为容器内的 /app 目录
+            // 配置挂载参数
             HostConfig hostConfig = HostConfig.newHostConfig()
-                    .withMemory(64 * 1024 * 1024L) // 限制最大内存 64MB
-                    .withCpuCount(1L)              // 限制单核 CPU
-                    .withNetworkMode("none")       // 禁用网络，防止代码攻击外部服务
+                    .withMemory(128 * 1024 * 1024L) // 适当放宽内存限制到 128MB 以便容纳 C++/Go 的多编译器运行
+                    .withCpuCount(1L)
+                    .withNetworkMode("none")       // 禁用网络，防止代码攻击
                     .withBinds(new Bind(dockerBindPath, new Volume("/app")));
 
             // 创建容器
-            CreateContainerResponse container = dockerClient.createContainerCmd(DOCKER_IMAGE)
+            CreateContainerResponse container = dockerClient.createContainerCmd(dockerImage)
                     .withHostConfig(hostConfig)
-                    .withCmd("sleep", "3600") // 使用 sleep 保持容器后台常驻 [1, 2]
-                    .withAttachStdin(false)   // 🌟 彻底不再需要从宿主机附加 stdin，防止 Socket 阻塞
+                    .withCmd("sleep", "3600")       // 保持容器常驻运行 [1, 2]
+                    .withAttachStdin(false)
                     .withAttachStdout(true)
                     .withAttachStderr(true)
-                    .withTty(false)           // 关闭 TTY 模式 [1]
+                    .withTty(false)
                     .exec();
 
             containerId = container.getId();
             // 启动容器
             dockerClient.startContainerCmd(containerId).exec();
 
-            // 4. 在容器内部执行运行指令: sh -c "java -cp /app Main < /app/input.txt"
-            // 🌟 核心改进 2：通过 Linux 自带的 sh 终端，将容器内的 /app/input.txt 重定向输入给 java 程序
-            // 这能在读取到文件末尾时完美、自动、由系统底层发送真正的 EOF 闭合信号，彻底斩断超时可能！
+            // 4. 在容器内部执行动态拼接的管道指令
             ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
-                    .withCmd("sh", "-c", "java -cp /app Main < /app/input.txt")
-                    .withAttachStdin(false) // 关闭 Stdin 附加
+                    .withCmd("sh", "-c", runCommand) // 🌟 核心：统一调起容器内 sh，管道式执行编译与文件输入流重定向
+                    .withAttachStdin(false)
                     .withAttachStdout(true)
                     .withAttachStderr(true)
                     .exec();
@@ -132,9 +140,7 @@ public class DockerSandboxImpl implements CodeSandbox {
             ExecStartResultCallback execStartResultCallback = new ExecStartResultCallback(stdoutStream, stderrStream);
 
             long startTime = System.currentTimeMillis();
-            // 启动内部指令（彻底移除了 .withStdIn()，避开了 docker-java 的网络流挂起 Bug）
-            dockerClient.execStartCmd(execId)
-                    .exec(execStartResultCallback);
+            dockerClient.execStartCmd(execId).exec(execStartResultCallback);
 
             // 5. 等待执行并检查是否超时
             boolean finished = execStartResultCallback.awaitCompletion(TIME_LIMIT, TimeUnit.MILLISECONDS);
@@ -154,9 +160,9 @@ public class DockerSandboxImpl implements CodeSandbox {
             String stderrResult = stderrStream.toString(StandardCharsets.UTF_8).trim();
 
             if (org.apache.commons.lang3.StringUtils.isNotBlank(stderrResult)) {
-                // 发生运行时异常 (RE)
+                // 运行或编译失败 (RE / CE)
                 return ExecuteCodeResponse.builder()
-                        .status(3) // 3 - RE
+                        .status(3) // 3 - 发生异常
                         .errorMsg(stderrResult)
                         .runTime(runTime)
                         .build();
@@ -164,17 +170,17 @@ public class DockerSandboxImpl implements CodeSandbox {
 
             // 6. 正常运行完毕，返回 AC/WA 比对容器输出
             return ExecuteCodeResponse.builder()
-                    .status(0) // 基础完成状态 (外部判题机会对比期望输出更新此状态)
+                    .status(0)
                     .output(stdoutResult)
                     .runTime(runTime)
-                    .runMemory(0L) // 内存获取预留字段
+                    .runMemory(0L)
                     .build();
 
         } catch (Exception e) {
             log.error("Docker 评测核心异常: ", e);
             return ExecuteCodeResponse.builder().status(3).errorMsg("评测沙箱核心异常: " + e.getMessage()).build();
         } finally {
-            // 7. 优雅环境清理：删除临时容器、清理本地字节码目录
+            // 7. 优雅环境清理：删除临时容器、清理本地文件夹
             if (containerId != null) {
                 try {
                     dockerClient.removeContainerCmd(containerId).withForce(true).exec();

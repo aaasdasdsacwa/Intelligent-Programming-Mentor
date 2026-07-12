@@ -21,11 +21,50 @@ const aiReport = ref('')
 // 编辑器实例与 DOM 节点
 const editorContainer = ref(null)
 let editorInstance = null
-// 新增：自拟输入参数绑定
+// 自拟输入参数绑定
 const customInput = ref('')
 const runLoading = ref(false)
 
-// 执行自拟运行（不判定对错，只展现结果）
+// 🌟 1. 新增：支持的多语言选项
+const selectedLang = ref('java')
+const langOptions = [
+  { label: 'Java (JDK 17)', value: 'java' },
+  { label: 'Python (Python 3)', value: 'python' },
+  { label: 'C++ (G++ 17)', value: 'cpp' },
+  { label: 'Go (Golang 1.20)', value: 'go' },
+  { label: 'JavaScript (Node.js)', value: 'javascript' }
+]
+
+// 🌟 2. 新增：多语言专属初始化代码模板
+const defaultTemplates = {
+  java: `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // 在此编写你的 Java 算法逻辑\n        \n    }\n}`,
+  python: `# 在此编写你的 Python 3 算法逻辑\nimport sys\n\nfor line in sys.stdin:\n    # 处理标准输入流\n    pass`,
+  cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    // 在此编写你的 C++ 17 算法逻辑\n    \n    return 0;\n}`,
+  go: `package main\n\nimport "fmt"\n\nfunc main() {\n    // 在此编写你的 Go 算法逻辑\n    \n}`,
+  javascript: `const readline = require('readline');\nconst rl = readline.createInterface({\n    input: process.stdin,\n    output: process.stdout\n});\n\nrl.on('line', (line) => {\n    // 在此编写你的 JavaScript 算法逻辑\n    \n});`
+}
+
+// 🌟 3. 新增：切换语言时的动态处理函数 [1]
+const handleLangChange = (newLang) => {
+  if (!editorInstance) return
+
+  // 动态切换 Monaco 的语法高亮 [1]
+  const monacoLangMap = {
+    java: 'java',
+    python: 'python',
+    cpp: 'cpp',
+    go: 'go',
+    javascript: 'javascript'
+  }
+  monaco.editor.setModelLanguage(editorInstance.getModel(), monacoLangMap[newLang])
+
+  // 读取/保存对应语言的本地代码 [1]
+  const localKey = `code_problem_${route.params.id}_${newLang}`
+  const savedCode = localStorage.getItem(localKey)
+  editorInstance.setValue(savedCode || defaultTemplates[newLang])
+}
+
+// 执行自拟运行（动态传入所选语言）
 const handleRunDebug = async () => {
   if (!editorInstance) return
   const userCode = editorInstance.getValue()
@@ -39,19 +78,18 @@ const handleRunDebug = async () => {
   judgeResult.value = null // 清空上一次结果
 
   try {
-    // 对应您后端 sandbox 的直接执行接口：如 POST /api/judge/run 仅跑代码并得到结果
     const res = await axios.post('/api/judge/run', {
       code: userCode,
-      language: 'java',
-      input: customInput.value // 将自拟输入的字符串传给后端
+      language: selectedLang.value, // 💡 动态传入所选语言
+      input: customInput.value
     })
     if (res.data.code === 0) {
       judgeResult.value = {
-        status: res.data.data.status !== undefined ? res.data.data.status : 0, // 仅用于激活运行状态
+        status: res.data.data.status !== undefined ? res.data.data.status : 0,
         output: res.data.data.output,
         errorMsg: res.data.data.errorMsg,
         runTime: res.data.data.runTime,
-        isDebug: true // 标记属于自拟调试，避免显示不符合预期的预期比对结果
+        isDebug: true
       }
       ElMessage.success('调试代码运行完成')
     } else {
@@ -80,15 +118,13 @@ const fetchProblem = async () => {
 
 // 初始化 Monaco Editor
 const initMonaco = () => {
-  // 🌟 尝试从本地存储读取该题目之前写过的代码内容 [1]
-  const localKey = `code_problem_${route.params.id}`
+  // 💡 优先读取本地对应语言缓存的代码，防止多语言覆盖 [1]
+  const localKey = `code_problem_${route.params.id}_${selectedLang.value}`
   const savedCode = localStorage.getItem(localKey)
 
-  const defaultJavaTemplate = `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // 在此编写你的解题算法逻辑\n        \n    }\n}`
-
   editorInstance = monaco.editor.create(editorContainer.value, {
-    value: savedCode || defaultJavaTemplate, // 优先使用缓存代码，否则用默认模板 [1]
-    language: 'java',
+    value: savedCode || defaultTemplates[selectedLang.value],
+    language: selectedLang.value,
     theme: 'vs-dark', // 经典极客深色主题
     automaticLayout: true,
     fontFamily: 'Consolas, "Fira Code", monospace',
@@ -102,16 +138,18 @@ const initMonaco = () => {
     }
   })
 
-  // 🌟 监听编辑器键盘输入事件，实时将最新代码写入本地缓存，确保永不丢代码 [1]
+  // 监听并实时持久化保存当前所选语言的代码 [1]
   editorInstance.onDidChangeModelContent(() => {
     const currentCode = editorInstance.getValue()
-    localStorage.setItem(localKey, currentCode) [1]
+    const currentKey = `code_problem_${route.params.id}_${selectedLang.value}`
+    localStorage.setItem(currentKey, currentCode) [1]
   })
 }
 
 // 提交代码进行 Docker 沙箱评测
+// 提交代码进行 Docker 沙箱评测（🌟 完美隔离业务与网络报错版）
+// 提交代码进行 Docker 沙箱评测（🌟 完整状态闭环 + 异常隔离版）
 const handleSubmitCode = async () => {
-
   if (!editorInstance) return
   const userCode = editorInstance.getValue()
   if (!userCode.trim()) {
@@ -123,61 +161,62 @@ const handleSubmitCode = async () => {
   activeTab.value = 'judge'
   judgeResult.value = null
 
+  // 1. 仅让 try-catch 包裹网络请求本身，只捕获纯粹的网络超时或断连 [1]
+  let res;
   try {
-    const res = await axios.post('/api/judge/submit', {
+    res = await axios.post('/api/judge/submit', {
       problemId: route.params.id,
       code: userCode,
-      language: 'java'
+      language: selectedLang.value
     })
-    if (res.data.code === 0) {
-      judgeResult.value = res.data.data
-
-      const isAccepted = judgeResult.value.status === 0
-      ElMessage({
-        message: isAccepted ? '🟢 恭喜你，测试点全部通过！' : '🔴 答案未通过，可发起 AI 辅助诊断。',
-        type: isAccepted ? 'success' : 'warning'
-      })
-
-      // 🌟 关键修复：一旦在 Docker 评测中通过，立刻在本地 localStorage 缓存标记“已通过”，以供列表页同步渲染 [1]
-      if (isAccepted) {
-        localStorage.setItem(`solved_problem_${route.params.id}`, '1')
-      }
-
-      // 智能联动进度：如果通过触发了路线图节点点亮
-      if (judgeResult.value.nodeUpdated) {
-        ElMessage({
-          message: `🎉 联动成功！已为你自动解锁并通关路线节点：【${judgeResult.value.updatedNodeName}】！`,
-          type: 'success',
-          duration: 6000
-        })
-      }
-    } else {
-      ElMessage.error(res.data.message || '评测失败')
-    }
   } catch (err) {
     ElMessage.error('评测超时，请确保本地 Docker 正常启动且开启了 2375 端口')
-  } finally {
     submitLoading.value = false
+    return
   }
-  // 🟢 完美修复：评测结束后，同步更新已通过 (1) 或未通过 (2) 的本地状态 [1]
-  if (judgeResult.value && judgeResult.value.status !== undefined) {
-    const isAccepted = judgeResult.value.status === 0
-    const cacheKey = `solved_problem_${route.params.id}`
 
+  // 2. 处理 UI 提示与本地缓存状态（避开 try-catch，绝不误触超时提示） [1]
+  if (res && res.data.code === 0) {
+    judgeResult.value = res.data.data
+
+    // 安全防空取值
+    const status = judgeResult.value ? judgeResult.value.status : -1
+    const isAccepted = status === 0
+
+    ElMessage({
+      message: isAccepted ? '🟢 恭喜你，测试点全部通过！' : '🔴 答案未通过，可发起 AI 辅助诊断。',
+      type: isAccepted ? 'success' : 'warning'
+    })
+
+    // 🌟 核心：更新本地答题状态，写入缓存 [1]
+    const cacheKey = `solved_problem_${route.params.id}`
     if (isAccepted) {
-      // 一旦通过，强制在本地设为已通过（1）
-      localStorage.setItem(cacheKey, '1') [1]
+      // 一旦通过，强制在本地设为已通过（1） [1]
+      localStorage.setItem(cacheKey, '1')
       console.log(`[Debug] 写入本地通关状态成功！key: ${cacheKey}`)
     } else {
       // 如果未通过，且该题目之前【从未通过】过，才将其设为未通过（2） [1]
       // 💡 这能防止之前通过了，这次手抖写错了又把状态覆盖回未通过 [1]
       const previouslySolved = localStorage.getItem(cacheKey) === '1'
       if (!previouslySolved) {
-        localStorage.setItem(cacheKey, '2') [1]
+        localStorage.setItem(cacheKey, '2')
         console.log(`[Debug] 写入本地【未通过】状态成功！key: ${cacheKey}`)
       }
     }
+
+    // 智能联动进度（增加防空 null 判定）
+    if (judgeResult.value && judgeResult.value.nodeUpdated) {
+      ElMessage({
+        message: `🎉 联动成功！已为你自动解锁并通关路线节点：【${judgeResult.value.updatedNodeName}】！`,
+        type: 'success',
+        duration: 6000
+      })
+    }
+  } else {
+    ElMessage.error(res ? (res.data.message || '评测失败') : '服务器无有效响应数据')
   }
+
+  submitLoading.value = false
 }
 
 // 基于原生 Fetch + EventStream 健壮解析大模型 SSE 字符块
@@ -346,7 +385,21 @@ onBeforeUnmount(() => {
           <div class="editor-sub-header">
             <div class="lang-tag">
               <span class="green-glow-dot"></span>
-              <span>Java (JDK 17)</span>
+              <!-- 🌟 升级：将原来的 Java(JDK17) 文本修改为 Element-Plus 的多语言下拉框 [1] -->
+              <el-select
+                  v-model="selectedLang"
+                  placeholder="选择编程语言"
+                  size="small"
+                  style="width: 140px;"
+                  @change="handleLangChange"
+              >
+                <el-option
+                    v-for="item in langOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                />
+              </el-select>
             </div>
             <div class="btn-group">
               <!-- 调试调试运行按钮 -->
@@ -440,7 +493,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* 原 CSS 保持完好 */
+/* 保持原 CSS 结构，在最下方增加 select 深度选择器，防止 dark 主题文字重叠 */
+:deep(.editor-sub-header .el-input__wrapper) {
+  background-color: #0c0a09 !important;
+  box-shadow: 0 0 0 1px #1c1917 inset !important;
+}
+:deep(.editor-sub-header .el-input__inner) {
+  color: #10b981 !important;
+  font-weight: bold;
+}
+
 .problem-detail-workspace {
   height: 100vh;
   display: flex;
@@ -449,7 +511,7 @@ onBeforeUnmount(() => {
 }
 .work-header {
   height: 48px;
-  background-color: #0f172a;
+  background-color: #0f172a; /* 深邃黑蓝，专业IDE外观 */
   color: #fff;
   display: flex;
   justify-content: space-between;
@@ -478,7 +540,7 @@ onBeforeUnmount(() => {
 .work-body {
   flex: 1;
   display: flex;
-  background-color: #0f172a;
+  background-color: #0f172a; /* 统一暗色基调 */
   overflow: hidden;
 }
 .left-desc-panel {
@@ -500,7 +562,7 @@ onBeforeUnmount(() => {
   height: 100%;
   border-radius: 8px;
   border: 1px solid #1e293b;
-  background-color: #1e293b;
+  background-color: #1e293b; /* 保持与 IDE 融为一体的暗色调 */
   color: #e2e8f0;
   overflow-y: auto;
 }
