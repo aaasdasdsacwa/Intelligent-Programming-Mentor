@@ -159,10 +159,24 @@ const handleSubmitCode = async () => {
   } finally {
     submitLoading.value = false
   }
-  // 🟢 完美修复：直接使用 judgeResult.value.status 进行判定，彻底根除 ReferenceError 报错！
-  if (judgeResult.value && judgeResult.value.status === 0) {
-    localStorage.setItem(`solved_problem_${route.params.id}`, '1')
-    console.log(`[Debug] 写入本地通关状态成功！key: solved_problem_${route.params.id}`)
+  // 🟢 完美修复：评测结束后，同步更新已通过 (1) 或未通过 (2) 的本地状态 [1]
+  if (judgeResult.value && judgeResult.value.status !== undefined) {
+    const isAccepted = judgeResult.value.status === 0
+    const cacheKey = `solved_problem_${route.params.id}`
+
+    if (isAccepted) {
+      // 一旦通过，强制在本地设为已通过（1）
+      localStorage.setItem(cacheKey, '1') [1]
+      console.log(`[Debug] 写入本地通关状态成功！key: ${cacheKey}`)
+    } else {
+      // 如果未通过，且该题目之前【从未通过】过，才将其设为未通过（2） [1]
+      // 💡 这能防止之前通过了，这次手抖写错了又把状态覆盖回未通过 [1]
+      const previouslySolved = localStorage.getItem(cacheKey) === '1'
+      if (!previouslySolved) {
+        localStorage.setItem(cacheKey, '2') [1]
+        console.log(`[Debug] 写入本地【未通过】状态成功！key: ${cacheKey}`)
+      }
+    }
   }
 }
 

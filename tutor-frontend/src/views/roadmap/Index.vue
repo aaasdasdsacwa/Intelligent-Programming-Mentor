@@ -46,27 +46,33 @@ const directionMap = {
   ]
 }
 
-// 意向输入表单
-const generateForm = ref({
+// 🌟 核心优化 1：初始化表单时，优先从本地缓存读取上一次选中的意向，防止刷新重置 [1]
+const savedForm = localStorage.getItem('cached_generate_form')
+const generateForm = ref(savedForm ? JSON.parse(savedForm) : {
   language: 'Java',
   target: 'Spring Boot Web 后端',
   currentLevel: '零基础'
 })
+
+// 🌟 核心优化 2：深度监听表单的变化，一旦发生修改立刻持久化存盘 [1]
+watch(generateForm, (newVal) => {
+  localStorage.setItem('cached_generate_form', JSON.stringify(newVal))
+}, { deep: true })
 
 // 计算属性：动态联动技术方向
 const availableTargets = computed(() => {
   return directionMap[generateForm.value.language] || []
 })
 
-// 监听语言变化，重置技术方向
-watch(() => generateForm.value.language, (newLang) => {
+// 🌟 核心优化 3：采用事件机制 @change 替代原先的 watch(language)，彻底消除初始化时的竞态重置 Bug [1]
+const handleLanguageChange = (newLang) => {
   const targets = directionMap[newLang]
   if (targets && targets.length > 0) {
     generateForm.value.target = targets[0].value
   } else {
     generateForm.value.target = ''
   }
-})
+}
 
 // 路线图数据
 const activePath = ref(null)
@@ -155,7 +161,7 @@ const fetchPathNodes = async (pathId) => {
   }
 }
 
-// 🌟 修改：获取简单介绍（不再每次调用 AI，而是直接请求后端的节点缓存查询接口）
+// 🌟 获取简单介绍（不再每次调用 AI，而是直接请求后端的节点缓存查询接口）
 const handleShowDetail = async (node) => {
   selectedNodeName.value = node.nodeName
   knowledgeDetail.value = ''
@@ -208,8 +214,14 @@ onMounted(() => {
           </template>
 
           <el-form :model="generateForm" label-position="top">
+            <!-- 🌟 修改：绑定 @change，只有手动点击改变语言时，才触发二级联动的重置 [1] -->
             <el-form-item label="1. 想学的编程语言">
-              <el-select v-model="generateForm.language" placeholder="请选择编程语言" style="width: 100%">
+              <el-select
+                  v-model="generateForm.language"
+                  placeholder="请选择编程语言"
+                  style="width: 100%"
+                  @change="handleLanguageChange"
+              >
                 <el-option label="Java 核心开发" value="Java" />
                 <el-option label="Python 核心开发" value="Python" />
                 <el-option label="Go 极速核心开发" value="Go" />
@@ -218,8 +230,17 @@ onMounted(() => {
               </el-select>
             </el-form-item>
 
+            <!-- 🌟 开启 filterable（可过滤）与 allow-create（允许自定义输入），并设置可清空 [1] -->
             <el-form-item label="2. 想攻克的技术方向">
-              <el-select v-model="generateForm.target" placeholder="请选择技术方向" style="width: 100%">
+              <el-select
+                  v-model="generateForm.target"
+                  placeholder="请选择或打字输入你想学的技术方向"
+                  style="width: 100%"
+                  filterable
+                  allow-create
+                  default-first-option
+                  clearable
+              >
                 <el-option
                     v-for="item in availableTargets"
                     :key="item.value"

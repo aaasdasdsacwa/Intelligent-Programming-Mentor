@@ -27,15 +27,14 @@ const isFilterMode = computed(() => {
 
 // 🌟 核心优化 1：新增探测函数，用于感知本地 localStorage 是否通过了该题目 [1]
 // 🌟 高健壮性探测函数：自动清洗后端可能残留的双引号、单引号与首尾空格
-const isSolvedLocally = (id) => {
-  if (id === null || id === undefined) return false
-
-  // 💡 双保险清洗：强制转 String 并且正则过滤掉可能存在的首尾物理引号（如 "1" 或 '1'）和空格
+// 🌟 核心改进：读取本地题目的答题历史状态：'1'-已通过，'2'-未通过，'0'-未开始 [1]
+const getLocalProblemStatus = (id) => {
+  if (id === null || id === undefined) return '0'
   const cleanId = String(id).trim().replace(/^["']|["']$/g, '')
-
-  // 💡 只要本地缓存存在该 Key 且不为空，即判定为已通过，防范一切格式比对不一致问题 [1]
   const val = localStorage.getItem(`solved_problem_${cleanId}`)
-  return val !== null && val !== undefined && val !== ''
+  if (val === '1') return '1'
+  if (val === '2') return '2'
+  return '0'
 }
 
 // 分页与条件加载列表
@@ -223,15 +222,14 @@ onMounted(() => {
 
           <!-- 🌟 核心优化 2：独立的【评测状态】展示列，支持读取本地持久化通关标记 [2] -->
 
-          <el-table-column label="评测状态" width="200" align="center">
+          <el-table-column label="评测状态" width="130" align="center">
             <template #default="scope">
-
-
-              <el-tag v-if="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id)" type="success" effect="plain" round>
+              <!-- 💡 优先检测本地状态，再检测后端状态 [2] -->
+              <el-tag v-if="scope.row.judgeStatus === 1 || getLocalProblemStatus(scope.row.id) === '1'" type="success" effect="plain" round>
                 <el-icon style="vertical-align: middle; margin-right: 4px;"><CircleCheck /></el-icon>
                 <span>已通过</span>
               </el-tag>
-              <el-tag v-else-if="scope.row.judgeStatus === 2" type="danger" effect="plain" round>
+              <el-tag v-else-if="scope.row.judgeStatus === 2 || getLocalProblemStatus(scope.row.id) === '2'" type="danger" effect="plain" round>
                 <el-icon style="vertical-align: middle; margin-right: 4px;"><CircleClose /></el-icon>
                 <span>未通过</span>
               </el-tag>
@@ -245,13 +243,13 @@ onMounted(() => {
           <el-table-column label="操作" width="140" align="center">
             <template #default="scope">
               <el-button
-                  :type="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? 'success' : 'primary'"
+                  :type="scope.row.judgeStatus === 1 || getLocalProblemStatus(scope.row.id) === '1' ? 'success' : 'primary'"
                   size="small"
-                  :icon="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? 'RefreshLeft' : 'Edit'"
+                  :icon="scope.row.judgeStatus === 1 || getLocalProblemStatus(scope.row.id) === '1' ? 'RefreshLeft' : 'Edit'"
                   class="challenge-btn"
                   @click="handleGoPractice(scope.row.id)"
               >
-                {{ scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? '重新挑战' : '开始练习' }}
+                {{ scope.row.judgeStatus === 1 || getLocalProblemStatus(scope.row.id) === '1' ? '重新挑战' : '开始练习' }}
               </el-button>
             </template>
           </el-table-column>

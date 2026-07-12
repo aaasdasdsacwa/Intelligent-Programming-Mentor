@@ -11,7 +11,7 @@ import com.tutor.smart.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-
+import com.tutor.smart.model.dto.UserUpdatePasswordRequest;
 /**
  * 用户控制层接口
  */
@@ -73,4 +73,16 @@ public class UserController {
         boolean result = userService.userLogout(request);
         return ResultUtils.success(result, "注销成功");
     }
+    /**
+     * 修改密码接口
+     */
+    @PostMapping("/update/password")
+    public BaseResponse<Boolean> updatePassword(@RequestBody UserUpdatePasswordRequest updateRequest, HttpServletRequest request) {
+        if (updateRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "修改密码参数不能为空");
+        }
+        boolean result = userService.updatePassword(updateRequest, request);
+        return ResultUtils.success(result);
+    }
+
 }

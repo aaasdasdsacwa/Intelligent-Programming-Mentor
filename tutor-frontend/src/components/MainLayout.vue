@@ -1,17 +1,51 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Compass, Document, User, SwitchButton, Cpu } from '@element-plus/icons-vue'
+import { Compass, Document, User, SwitchButton, Cpu, Edit, InfoFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import AiAssistant from './AiAssistant.vue' // 引入我们写好的 AI 问答组件
+import AiAssistant from './AiAssistant.vue' // 引入 AI 问答组件
 
 const router = useRouter()
 const route = useRoute()
 const currentUser = ref(null)
 
-// 根据路由路径高亮对应的菜单项
+// 动态绑定高亮
 const activeMenu = ref(route.path)
+
+// 修改密码弹窗相关状态
+const passwordDialogVisible = ref(false)
+const passwordLoading = ref(false)
+const passwordFormRef = ref(null)
+const passwordForm = ref({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+// 表单前端规则判定
+const passwordRules = {
+  oldPassword: [
+    { required: true, message: '请输入当前密码', trigger: 'blur' }
+  ],
+  newPassword: [
+    { required: true, message: '请设置新密码', trigger: 'blur' },
+    { min: 6, message: '新密码不能少于 6 位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入新密码确认', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== passwordForm.value.newPassword) {
+          callback(new Error('两次输入的新密码不一致！'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
 
 const fetchUser = async () => {
   try {
@@ -32,7 +66,6 @@ const handleLogout = async () => {
     const res = await axios.post('/api/user/logout')
     if (res.data.code === 0) {
       ElMessage.success('已安全退出登录')
-      // 清空本地缓存的路线
       localStorage.removeItem('cached_path')
       localStorage.removeItem('cached_nodes')
       router.push('/login')
@@ -40,6 +73,40 @@ const handleLogout = async () => {
   } catch (err) {
     router.push('/login')
   }
+}
+
+// 🌟 新增：提交修改密码请求
+const handleUpdatePassword = () => {
+  if (!passwordFormRef.value) return
+
+  passwordFormRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    passwordLoading.value = true
+    try {
+      const res = await axios.post('/api/user/update/password', {
+        oldPassword: passwordForm.value.oldPassword,
+        newPassword: passwordForm.value.newPassword
+      })
+
+      if (res.data.code === 0) {
+        ElMessage({
+          message: '🎉 密码修改成功！请使用新密码重新登录。',
+          type: 'success',
+          duration: 3000
+        })
+        passwordDialogVisible.value = false
+        // 修改密码成功后，强制退出会话并返回登录大厅
+        await handleLogout()
+      } else {
+        ElMessage.error(res.data.message || '密码修改失败')
+      }
+    } catch (err) {
+      ElMessage.error('无法连接密码服务，请确认后端 update/password 接口已编译启动')
+    } finally {
+      passwordLoading.value = false
+    }
+  })
 }
 
 onMounted(() => {
@@ -85,11 +152,28 @@ onMounted(() => {
         </div>
 
         <div class="header-right-user" v-if="currentUser">
+          <!-- 用户名 -->
           <div class="user-info-chip">
             <el-icon class="user-icon"><User /></el-icon>
             <span class="nickname">{{ currentUser.nickname || currentUser.username }}</span>
           </div>
+
           <el-divider direction="vertical" />
+
+          <!-- 🌟 新增：修改密码按钮入口 -->
+          <el-button
+              type="primary"
+              link
+              :icon="Edit"
+              class="password-link-btn"
+              @click="passwordDialogVisible = true"
+          >
+            修改密码
+          </el-button>
+
+          <el-divider direction="vertical" />
+
+          <!-- 退出登录 -->
           <el-button
               type="danger"
               link
@@ -102,9 +186,8 @@ onMounted(() => {
         </div>
       </el-header>
 
-      <!-- 子路由渲染区 -->
+      <!-- 子路由渲染区（开启 keep-alive 页面状态驻存） -->
       <el-main class="layout-content-viewer">
-        <!-- 🌟 核心优化：使用 Vue3 的 keep-alive 对主导航子页面进行视图缓存，切换 tab 页面不会被销毁重刷 -->
         <router-view v-slot="{ Component }">
           <keep-alive>
             <component :is="Component" :key="$route.fullPath" />
@@ -115,6 +198,57 @@ onMounted(() => {
 
     <!-- 全局挂载：AI 编程答疑助手悬浮窗 -->
     <AiAssistant />
+
+    <!-- 🌟 新增：修改密码 el-dialog 对话表单 -->
+    <el-dialog
+        v-model="passwordDialogVisible"
+        title="🔐 修改账户登录密码"
+        width="450px"
+        destroy-on-close
+    >
+      <el-form
+          ref="passwordFormRef"
+          :model="passwordForm"
+          :rules="passwordRules"
+          label-position="top"
+      >
+        <el-form-item label="当前原密码" prop="oldPassword" required>
+          <el-input
+              v-model="passwordForm.oldPassword"
+              type="password"
+              placeholder="请输入您当前的登录密码"
+              show-password
+          />
+        </el-form-item>
+
+        <el-form-item label="设置新密码" prop="newPassword" required>
+          <el-input
+              v-model="passwordForm.newPassword"
+              type="password"
+              placeholder="请设置新的账户密码（不低于6位）"
+              show-password
+          />
+        </el-form-item>
+
+        <el-form-item label="再次输入新密码" prop="confirmPassword" required>
+          <el-input
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              placeholder="请再次输入新密码以进行确认"
+              show-password
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="passwordDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="passwordLoading" @click="handleUpdatePassword">
+            确认修改
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
@@ -211,6 +345,16 @@ onMounted(() => {
 
 .logout-link-btn {
   font-size: 13.5px;
+}
+
+/* 修改密码按钮微调 */
+.password-link-btn {
+  font-size: 13.5px;
+  color: #3b82f6;
+}
+
+.password-link-btn:hover {
+  color: #1d4ed8;
 }
 
 .layout-content-viewer {

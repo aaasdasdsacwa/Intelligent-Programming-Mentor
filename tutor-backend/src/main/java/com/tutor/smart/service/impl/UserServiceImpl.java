@@ -14,6 +14,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+import com.tutor.smart.model.dto.UserUpdatePasswordRequest;
 
 /**
  * 用户服务实现类
@@ -109,7 +110,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
         }
 
-        // 2. 建议从数据库重查一次，防止用户信息被管理员封禁或修改
+        // 2. 从数据库重查一次，防止用户信息被管理员封禁或修改
         User user = this.getById(currentUser.getId());
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在或已被封禁");
@@ -128,5 +129,42 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 清理 Session
         request.getSession().removeAttribute(USER_LOGIN_STATE);
         return true;
+    }
+
+    @Override
+    public boolean updatePassword(UserUpdatePasswordRequest updateRequest, HttpServletRequest request) {
+        // 1. 验证用户登录状态，获取当前用户 ID
+        UserVO loginUser = this.getLoginUser(request);
+        Long userId = loginUser.getId();
+
+        String oldPassword = updateRequest.getOldPassword();
+        String newPassword = updateRequest.getNewPassword();
+
+        if (StringUtils.isAnyBlank(oldPassword, newPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "旧密码与新密码均不能为空");
+        }
+
+        if (newPassword.length() < 6) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码长度不能少于 6 位");
+        }
+
+        // 2. 查询数据库中该用户的真实密文
+        User user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "当前用户状态异常");
+        }
+
+        // 3. 对输入的旧密码进行加盐 MD5 加密比对
+        String encryptOldPassword = DigestUtils.md5DigestAsHex((SALT + oldPassword).getBytes());
+
+        if (!user.getPassword().equals(encryptOldPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "原密码输入错误，校验失败");
+        }
+
+        // 4. 对新密码进行同样的加盐 MD5 加密并更新存入数据库
+        String encryptNewPassword = DigestUtils.md5DigestAsHex((SALT + newPassword).getBytes());
+        user.setPassword(encryptNewPassword);
+
+        return this.updateById(user);
     }
 }

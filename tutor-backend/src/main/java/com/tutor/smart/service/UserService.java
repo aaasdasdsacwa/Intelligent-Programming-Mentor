@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.tutor.smart.model.entity.User;
 import com.tutor.smart.model.vo.UserVO;
 import jakarta.servlet.http.HttpServletRequest;
-
+import com.tutor.smart.model.dto.UserUpdatePasswordRequest;
 /**
  * 用户服务接口
  */
@@ -26,7 +26,10 @@ public interface UserService extends IService<User> {
      * @return 脱敏后的用户信息
      */
     UserVO userLogin(String username, String password, HttpServletRequest request);
-
+    /**
+     * 修改用户密码
+     */
+    boolean updatePassword(UserUpdatePasswordRequest updateRequest, HttpServletRequest request);
     /**
      * 获取当前登录用户 (如果未登录则抛出异常)
      */
