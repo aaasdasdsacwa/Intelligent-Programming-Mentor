@@ -18,7 +18,10 @@ public interface LearningPathService extends IService<LearningPath> {
      * @return 生成的学习路径主表 ID
      */
     long generateLearningPath(PathGenerateRequest generateRequest, HttpServletRequest request);
-
+    /**
+     * 获取节点的简单介绍（内置 AI 懒加载数据库缓存机制）
+     */
+    String getNodeDetail(Long nodeId);
     /**
      * 获取指定路径下的所有节点列表
      */

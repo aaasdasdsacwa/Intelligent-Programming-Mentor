@@ -18,7 +18,8 @@ public class PathNode implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
-
+    // 增加对应数据库的 detail 属性，Lombok 会自动为您生成 Getter/Setter
+    private String detail;
     private Long pathId;         // 关联路径主表ID
 
     private String nodeName;     // 节点名称

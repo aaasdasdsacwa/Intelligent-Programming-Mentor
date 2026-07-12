@@ -155,7 +155,7 @@ const fetchPathNodes = async (pathId) => {
   }
 }
 
-// 点击展示详细知识点概念精讲（调用 AI 动态生成 500 字科普）
+// 🌟 修改：获取简单介绍（不再每次调用 AI，而是直接请求后端的节点缓存查询接口）
 const handleShowDetail = async (node) => {
   selectedNodeName.value = node.nodeName
   knowledgeDetail.value = ''
@@ -163,23 +163,15 @@ const handleShowDetail = async (node) => {
   detailLoading.value = true
 
   try {
-    // 组装高强度的概念深度精讲指令，利用已有的 QaController 完成响应
-    const prompt = `你是一位专业的计算机科学导师。请为学生深度科普并讲解技术概念/知识点：【${node.nodeName}】。\n\n`
-        + "要求内容结构条理清晰，包含以下四个维度：\n"
-        + "1. 核心定义与基本原理：用通俗易懂的语言解释它是什么、它是如何工作的。\n"
-        + "2. 关键应用场景：在真实的工业界开发中，什么情况下我们会使用它。\n"
-        + "3. 极简代码示例：给出一个极简、典型的核心代码示例（Java / Python / Go / JS 均可）直观说明其用法。\n"
-        + "4. 总结：用一句话提炼它的核心价值。\n\n"
-        + "字数严格控制在 500 字左右，段落分明，排版精美。";
-
-    const res = await axios.post('/api/qa/chat', { question: prompt })
+    // 💡 请求后端，由后端完成懒加载缓存并返回数据
+    const res = await axios.get(`/api/path/node/detail?nodeId=${node.id}`)
     if (res.data.code === 0) {
       knowledgeDetail.value = res.data.data
     } else {
-      knowledgeDetail.value = '❌ 无法获取知识点精讲内容：' + res.data.message
+      knowledgeDetail.value = '❌ 无法获取简单介绍：' + res.data.message
     }
   } catch (err) {
-    knowledgeDetail.value = '❌ 无法连接智能问答服务器，请检查后端服务是否正常运行。'
+    knowledgeDetail.value = '❌ 无法连接后端服务器，请确认数据库字段与接口已正确更新。'
   } finally {
     detailLoading.value = false
   }
@@ -332,14 +324,14 @@ onMounted(() => {
                     </div>
 
                     <div class="node-btn-group">
-                      <!-- 🌟 仅保留一个核心的“详细知识点”选项 -->
+                      <!-- 🌟 按钮文案修改为：简单介绍 [2] -->
                       <el-button
                           type="primary"
                           size="small"
                           icon="Reading"
                           @click="handleShowDetail(node)"
                       >
-                        详细知识点
+                        简单介绍
                       </el-button>
                     </div>
                   </div>
@@ -351,17 +343,27 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 🌟 新增：右侧滑出的“知识点精讲”抽屉面板 -->
+    <!-- 🌟 知识精讲/简单介绍抽屉面板 -->
     <el-drawer
         v-model="drawerVisible"
-        :title="`📘 知识精讲：${selectedNodeName}`"
+        :title="`📘 概念精讲：${selectedNodeName}`"
         size="42%"
         destroy-on-close
         direction="rtl"
     >
       <div v-loading="detailLoading" class="knowledge-drawer-content">
-        <!-- pre 标签完美保留大模型吐字出来的换行与代码段排版 -->
+        <!-- pre 标签保留排版格式 -->
         <pre class="knowledge-text-block" v-if="knowledgeDetail">{{ knowledgeDetail }}</pre>
+
+        <!-- 🌟 新增：底部友好提示框，包含高亮外链 [2] -->
+        <div class="knowledge-runoob-tip" v-if="knowledgeDetail && !detailLoading">
+          <el-icon class="tip-icon"><InfoFilled /></el-icon>
+          <span>
+            此为简单介绍，详细学习请至
+            <a href="https://www.runoob.com" target="_blank" class="runoob-link">runoob.com</a>
+          </span>
+        </div>
+
         <el-empty v-else-if="!detailLoading" description="暂无精讲数据" />
       </div>
     </el-drawer>
@@ -564,10 +566,12 @@ onMounted(() => {
   align-items: center;
 }
 
-/* 🌟 右侧知识精讲抽屉样式 */
+/* 右侧知识精讲抽屉样式 */
 .knowledge-drawer-content {
   min-height: 240px;
   padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
 }
 
 .knowledge-text-block {
@@ -577,6 +581,36 @@ onMounted(() => {
   color: #334155;
   font-size: 14.5px;
   margin: 0;
+  flex: 1;
+}
+
+/* 🌟 新增：底部友好提示框样式 [2] */
+.knowledge-runoob-tip {
+  margin-top: 30px;
+  padding: 12px 16px;
+  background-color: #f0fdf4; /* 淡淡的绿底 */
+  border-left: 4px solid #10b981; /* 经典绿条 */
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: #065f46;
+}
+
+.tip-icon {
+  font-size: 16px;
+  color: #10b981;
+}
+
+.runoob-link {
+  color: #10b981;
+  text-decoration: underline;
+  font-weight: bold;
+}
+
+.runoob-link:hover {
+  color: #047857;
 }
 
 /* 动效 */

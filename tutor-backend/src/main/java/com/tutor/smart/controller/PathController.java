@@ -13,6 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.tutor.smart.common.BaseResponse;
+import com.tutor.smart.common.ResultUtils;
+
 
 /**
  * 学习路径规划控制器
@@ -23,7 +26,11 @@ public class PathController {
 
     @Autowired
     private LearningPathService learningPathService;
-
+    @GetMapping("/node/detail")
+    public BaseResponse<String> getNodeDetail(@RequestParam Long nodeId) {
+        String detail = learningPathService.getNodeDetail(nodeId);
+        return ResultUtils.success(detail);
+    }
     /**
      * 智能生成学习路径
      */

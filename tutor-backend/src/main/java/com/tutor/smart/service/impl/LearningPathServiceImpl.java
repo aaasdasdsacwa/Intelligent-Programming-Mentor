@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-
+import com.tutor.smart.model.entity.PathNode;
 /**
  * 学习路径服务实现类
  */
@@ -37,7 +37,47 @@ public class LearningPathServiceImpl extends ServiceImpl<LearningPathMapper, Lea
 
     @Autowired
     private ChatLanguageModel chatModel;
+    @Override
+    public String getNodeDetail(Long nodeId) {
+        if (nodeId == null || nodeId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 1. 查询数据库中该节点的数据
+        PathNode node = pathNodeMapper.selectById(nodeId);
+        if (node == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "路线节点不存在");
+        }
 
+        // 2. 🌟 懒加载核心：如果数据库里该字段不为空，说明已经生成并保存过，直接秒级返回缓存，不再扣除大模型额度
+        if (StringUtils.isNotBlank(node.getDetail())) {
+            log.info("🎯 命中数据库缓存，直接返回节点【{}】的简单介绍", node.getNodeName());
+            return node.getDetail();
+        }
+
+        // 3. 如果数据库里没有，则组装指令调用大模型生成
+        log.info("🔮 数据库未命中缓存，正在调用 AI 生成节点【{}】的简单介绍...", node.getNodeName());
+        String prompt = "你是一位专业的计算机科学导师。请为学生深度科普并讲解技术概念/知识点：【" + node.getNodeName() + "】。\n\n"
+                + "要求内容结构条理清晰，包含以下四个维度：\n"
+                + "1. 核心定义与基本原理：用通俗易懂的语言解释它是什么、它是如何工作的。\n"
+                + "2. 关键应用场景：在真实的工业界开发中，什么情况下我们会使用它。\n"
+                + "3. 极简代码示例：给出一个极简、典型的核心代码示例（Java / Python / Go / JS 均可）直观说明其用法。\n"
+                + "4. 总结：用一句话提炼它的核心价值。\n\n"
+                + "字数严格控制在 500 字左右，段落分明，排版精美。";
+
+        String answer;
+        try {
+            answer = chatModel.generate(prompt);
+        } catch (Exception e) {
+            log.error("AI 概念生成失败: ", e);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "大模型响应超时，请稍后再试");
+        }
+
+        // 4. 将 AI 生成的内容更新保存到数据库中，完成首次数据落盘缓存
+        node.setDetail(answer);
+        pathNodeMapper.updateById(node);
+
+        return answer;
+    }
     @Override
     @Transactional(rollbackFor = Exception.class) // 添加事务支持
     public long generateLearningPath(PathGenerateRequest generateRequest, HttpServletRequest request) {

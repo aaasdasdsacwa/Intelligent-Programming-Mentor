@@ -25,6 +25,19 @@ const isFilterMode = computed(() => {
   return !!route.query.tag
 })
 
+// 🌟 核心优化 1：新增探测函数，用于感知本地 localStorage 是否通过了该题目 [1]
+// 🌟 高健壮性探测函数：自动清洗后端可能残留的双引号、单引号与首尾空格
+const isSolvedLocally = (id) => {
+  if (id === null || id === undefined) return false
+
+  // 💡 双保险清洗：强制转 String 并且正则过滤掉可能存在的首尾物理引号（如 "1" 或 '1'）和空格
+  const cleanId = String(id).trim().replace(/^["']|["']$/g, '')
+
+  // 💡 只要本地缓存存在该 Key 且不为空，即判定为已通过，防范一切格式比对不一致问题 [1]
+  const val = localStorage.getItem(`solved_problem_${cleanId}`)
+  return val !== null && val !== undefined && val !== ''
+}
+
 // 分页与条件加载列表
 const fetchProblemList = async () => {
   loading.value = true
@@ -160,9 +173,11 @@ onMounted(() => {
             stripe
             class="custom-table"
         >
+          <!-- 编号 -->
           <el-table-column prop="id" label="编号" width="90" align="center" />
 
-          <el-table-column prop="title" label="题目标题" min-width="200">
+          <!-- 题目标题 -->
+          <el-table-column prop="title" label="题目标题" min-width="180">
             <template #default="scope">
               <span class="problem-title-click" @click="handleGoPractice(scope.row.id)">
                 {{ scope.row.title }}
@@ -170,7 +185,8 @@ onMounted(() => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="difficulty" label="难度等级" width="130" align="center">
+          <!-- 难度等级 -->
+          <el-table-column prop="difficulty" label="难度等级" width="110" align="center">
             <template #default="scope">
               <div class="difficulty-indicator">
                 <span
@@ -188,7 +204,8 @@ onMounted(() => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="tags" label="匹配知识标签" min-width="180">
+          <!-- 匹配知识标签 -->
+          <el-table-column prop="tags" label="匹配知识标签" min-width="150">
             <template #default="scope">
               <div class="tags-wrapper">
                 <el-tag
@@ -204,16 +221,37 @@ onMounted(() => {
             </template>
           </el-table-column>
 
-          <el-table-column label="评测状态" width="160" align="center">
+          <!-- 🌟 核心优化 2：独立的【评测状态】展示列，支持读取本地持久化通关标记 [2] -->
+
+          <el-table-column label="评测状态" width="200" align="center">
+            <template #default="scope">
+
+
+              <el-tag v-if="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id)" type="success" effect="plain" round>
+                <el-icon style="vertical-align: middle; margin-right: 4px;"><CircleCheck /></el-icon>
+                <span>已通过</span>
+              </el-tag>
+              <el-tag v-else-if="scope.row.judgeStatus === 2" type="danger" effect="plain" round>
+                <el-icon style="vertical-align: middle; margin-right: 4px;"><CircleClose /></el-icon>
+                <span>未通过</span>
+              </el-tag>
+              <el-tag v-else type="info" effect="plain" round>
+                <span>未开始</span>
+              </el-tag>
+            </template>
+          </el-table-column>
+
+          <!-- 🌟 核心优化 3：独立的【操作】按钮列，根据本地通关状态实现“绿色重新挑战”与“蓝色开始练习”的自动转换 -->
+          <el-table-column label="操作" width="140" align="center">
             <template #default="scope">
               <el-button
-                  type="primary"
+                  :type="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? 'success' : 'primary'"
                   size="small"
-                  icon="Edit"
+                  :icon="scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? 'RefreshLeft' : 'Edit'"
                   class="challenge-btn"
                   @click="handleGoPractice(scope.row.id)"
               >
-                开始练习
+                {{ scope.row.judgeStatus === 1 || isSolvedLocally(scope.row.id) ? '重新挑战' : '开始练习' }}
               </el-button>
             </template>
           </el-table-column>
@@ -263,6 +301,6 @@ onMounted(() => {
 .pagination-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; }
 .total-summary { font-size: 13.5px; color: #64748b; }
 .total-summary b { color: #0f172a; }
-.challenge-btn { border-radius: 6px; }
+.challenge-btn { border-radius: 6px; font-weight: bold; }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
 </style>

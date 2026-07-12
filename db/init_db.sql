@@ -70,3 +70,4 @@ VALUES
     (2, '回文字符串检测', '编写一个 Java 程序，判断输入的字符串是否为回文字符串（即正着读和反着读都完全一样的字符串，例如 "aba", "racecar"）。\n如果为回文，输出 "true"，否则输出 "false"。\n\n【输入格式】\n输入一行包含一个字符串。\n\n【输出格式】\n输出 "true" 或 "false"。\n\n【输入样例】\nlevel\n\n【输出样例】\ntrue', 'level', 'true', 'easy', 'java,string'),
 
     (3, '斐波那契数列第 N 项', '求出斐波那契数列第 N 项的值。\n斐波那契数列定义如下：\nF(0) = 0, F(1) = 1\nF(N) = F(N-1) + F(N-2) (N >= 2)\n\n【输入格式】\n输入一个非负整数 N（0 <= N <= 30）。\n\n【输出格式】\n输出第 N 项的斐波那契数。\n\n【输入样例】\n6\n\n【输出样例】\n8', '6', '8', 'medium', 'java,algorithm');
+ALTER TABLE `path_node` ADD COLUMN `detail` TEXT NULL COMMENT '知识点简单介绍缓存';

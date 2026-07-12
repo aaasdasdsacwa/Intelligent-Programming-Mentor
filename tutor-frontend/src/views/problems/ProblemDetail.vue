@@ -80,10 +80,14 @@ const fetchProblem = async () => {
 
 // 初始化 Monaco Editor
 const initMonaco = () => {
+  // 🌟 尝试从本地存储读取该题目之前写过的代码内容 [1]
+  const localKey = `code_problem_${route.params.id}`
+  const savedCode = localStorage.getItem(localKey)
+
   const defaultJavaTemplate = `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // 在此编写你的解题算法逻辑\n        \n    }\n}`
 
   editorInstance = monaco.editor.create(editorContainer.value, {
-    value: defaultJavaTemplate,
+    value: savedCode || defaultJavaTemplate, // 优先使用缓存代码，否则用默认模板 [1]
     language: 'java',
     theme: 'vs-dark', // 经典极客深色主题
     automaticLayout: true,
@@ -97,10 +101,17 @@ const initMonaco = () => {
       horizontal: 'visible'
     }
   })
+
+  // 🌟 监听编辑器键盘输入事件，实时将最新代码写入本地缓存，确保永不丢代码 [1]
+  editorInstance.onDidChangeModelContent(() => {
+    const currentCode = editorInstance.getValue()
+    localStorage.setItem(localKey, currentCode) [1]
+  })
 }
 
 // 提交代码进行 Docker 沙箱评测
 const handleSubmitCode = async () => {
+
   if (!editorInstance) return
   const userCode = editorInstance.getValue()
   if (!userCode.trim()) {
@@ -120,10 +131,17 @@ const handleSubmitCode = async () => {
     })
     if (res.data.code === 0) {
       judgeResult.value = res.data.data
+
+      const isAccepted = judgeResult.value.status === 0
       ElMessage({
-        message: judgeResult.value.status === 0 ? '🟢 恭喜你，测试点全部通过！' : '🔴 答案未通过，可发起 AI 辅助诊断。',
-        type: judgeResult.value.status === 0 ? 'success' : 'warning'
+        message: isAccepted ? '🟢 恭喜你，测试点全部通过！' : '🔴 答案未通过，可发起 AI 辅助诊断。',
+        type: isAccepted ? 'success' : 'warning'
       })
+
+      // 🌟 关键修复：一旦在 Docker 评测中通过，立刻在本地 localStorage 缓存标记“已通过”，以供列表页同步渲染 [1]
+      if (isAccepted) {
+        localStorage.setItem(`solved_problem_${route.params.id}`, '1')
+      }
 
       // 智能联动进度：如果通过触发了路线图节点点亮
       if (judgeResult.value.nodeUpdated) {
@@ -141,9 +159,14 @@ const handleSubmitCode = async () => {
   } finally {
     submitLoading.value = false
   }
+  // 🟢 完美修复：直接使用 judgeResult.value.status 进行判定，彻底根除 ReferenceError 报错！
+  if (judgeResult.value && judgeResult.value.status === 0) {
+    localStorage.setItem(`solved_problem_${route.params.id}`, '1')
+    console.log(`[Debug] 写入本地通关状态成功！key: solved_problem_${route.params.id}`)
+  }
 }
 
-// 🌟 核心高阶设计：基于原生 Fetch + EventStream 健壮解析大模型 SSE 字符块
+// 基于原生 Fetch + EventStream 健壮解析大模型 SSE 字符块
 const handleAiReviewStream = async () => {
   if (!editorInstance) return
   const userCode = editorInstance.getValue()
@@ -312,7 +335,7 @@ onBeforeUnmount(() => {
               <span>Java (JDK 17)</span>
             </div>
             <div class="btn-group">
-              <!-- 🌟 调试调试运行按钮 -->
+              <!-- 调试调试运行按钮 -->
               <el-button type="info" icon="Cpu" :loading="runLoading" :disabled="submitLoading" @click="handleRunDebug">
                 自拟测试运行
               </el-button>
@@ -334,7 +357,7 @@ onBeforeUnmount(() => {
 
             <!-- 评测结果控制台 -->
             <el-tab-pane label="🚀 OJ 评测控制台" name="judge">
-              <!-- 🌟 自拟输入测试参数输入栏 -->
+              <!-- 自拟输入测试参数输入栏 -->
               <div class="custom-input-section">
                 <span class="custom-input-label">自拟测试输入数据 (调试运行时生效)：</span>
                 <el-input
@@ -403,17 +426,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 原 CSS 保持完好 */
 .problem-detail-workspace {
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-
-/* 顶部轻量控制栏 */
 .work-header {
   height: 48px;
-  background-color: #0f172a; /* 深邃黑蓝，专业IDE外观 */
+  background-color: #0f172a;
   color: #fff;
   display: flex;
   justify-content: space-between;
@@ -421,7 +443,6 @@ onBeforeUnmount(() => {
   padding: 0 20px;
   border-bottom: 1px solid #1e293b;
 }
-
 .header-left {
   display: flex;
   align-items: center;
@@ -429,36 +450,29 @@ onBeforeUnmount(() => {
   color: #94a3b8;
   transition: color 0.2s;
 }
-
 .header-left:hover {
   color: #fff;
 }
-
 .back-link {
   font-size: 13px;
 }
-
 .problem-current-title {
   font-weight: bold;
   font-size: 14.5px;
   color: #3b82f6;
 }
-
-/* 左右工作区分栏 */
 .work-body {
   flex: 1;
   display: flex;
-  background-color: #0f172a; /* 统一暗色基调 */
+  background-color: #0f172a;
   overflow: hidden;
 }
-
 .left-desc-panel {
   width: 40%;
   padding: 10px;
   box-sizing: border-box;
   height: 100%;
 }
-
 .right-develop-panel {
   width: 60%;
   padding: 10px 10px 10px 0;
@@ -468,26 +482,22 @@ onBeforeUnmount(() => {
   gap: 10px;
   height: 100%;
 }
-
 .desc-card {
   height: 100%;
   border-radius: 8px;
   border: 1px solid #1e293b;
-  background-color: #1e293b; /* 保持与 IDE 融为一体的暗色调 */
+  background-color: #1e293b;
   color: #e2e8f0;
   overflow-y: auto;
 }
-
 .problem-header h3 {
   margin: 0 0 10px 0;
   color: #fff;
 }
-
 .difficulty-and-tags {
   display: flex;
   gap: 6px;
 }
-
 .section-title {
   font-weight: bold;
   font-size: 14px;
@@ -496,14 +506,12 @@ onBeforeUnmount(() => {
   padding-left: 8px;
   margin: 20px 0 8px 0;
 }
-
 .description-text {
   font-size: 14px;
   line-height: 1.6;
   color: #cbd5e1;
   white-space: pre-wrap;
 }
-
 .case-box {
   background-color: #0f172a;
   border: 1px solid #1e293b;
@@ -514,8 +522,6 @@ onBeforeUnmount(() => {
   color: #38bdf8;
   margin: 0;
 }
-
-/* 编辑器容器样式 */
 .monaco-wrapper {
   height: 60%;
   border-radius: 8px;
@@ -525,7 +531,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
 }
-
 .editor-sub-header {
   height: 38px;
   background-color: #181818;
@@ -536,13 +541,11 @@ onBeforeUnmount(() => {
   color: #94a3b8;
   font-size: 12.5px;
 }
-
 .lang-tag {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
 .green-glow-dot {
   width: 6px;
   height: 6px;
@@ -550,17 +553,13 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   box-shadow: 0 0 8px #10b981;
 }
-
 .btn-group {
   display: flex;
   gap: 8px;
 }
-
 .monaco-container-box {
   flex: 1;
 }
-
-/* 评测控制台及选项卡 */
 .terminal-wrapper {
   height: 40%;
   background-color: #1e293b;
@@ -570,8 +569,6 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   overflow-y: auto;
 }
-
-/* 深度覆写 Element-Plus 样式，保持黑夜暗色风格 */
 :deep(.el-tabs__item) {
   color: #94a3b8 !important;
 }
@@ -582,14 +579,12 @@ onBeforeUnmount(() => {
 :deep(.el-tabs__active-bar) {
   background-color: #3b82f6 !important;
 }
-
 .empty-terminal {
   height: 100px;
   display: flex;
   justify-content: center;
   align-items: center;
 }
-
 .terminal-status-header {
   font-weight: bold;
   font-size: 15px;
@@ -597,24 +592,19 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   margin-bottom: 12px;
 }
-
 .stat-green { color: #10b981; }
 .stat-red { color: #ef4444; }
 .stat-yellow { color: #eab308; }
 .stat-orange { color: #f97316; }
-
 .run-info-time {
   font-size: 12px;
   color: #94a3b8;
 }
-
-/* 🌟 新增：自拟测试输入调试栏样式 */
 .custom-input-section {
   margin-bottom: 12px;
   border-bottom: 1px dashed #1e293b;
   padding-bottom: 12px;
 }
-
 .custom-input-label {
   font-size: 12px;
   color: #94a3b8;
@@ -622,19 +612,14 @@ onBeforeUnmount(() => {
   display: block;
   margin-bottom: 6px;
 }
-
-/* 深度定制 input 外观以契合 IDE 终端背景 */
 :deep(.custom-input-section .el-input__wrapper) {
   background-color: #0f172a !important;
   box-shadow: 0 0 0 1px #1e293b inset !important;
 }
-
 :deep(.custom-input-section .el-input__inner) {
   color: #38bdf8 !important;
   font-family: monospace;
 }
-
-/* 终端模拟错误框 */
 .compile-error-terminal {
   background-color: #0c0a09;
   border: 1px solid #1c1917;
@@ -642,14 +627,12 @@ onBeforeUnmount(() => {
   padding: 10px;
   margin-bottom: 12px;
 }
-
 .compile-error-terminal .terminal-title {
   font-size: 12px;
   color: #b91c1c;
   font-weight: bold;
   margin-bottom: 4px;
 }
-
 .compile-error-terminal pre {
   margin: 0;
   color: #ef4444;
@@ -657,22 +640,18 @@ onBeforeUnmount(() => {
   font-size: 12px;
   white-space: pre-wrap;
 }
-
 .cases-comparison {
   display: flex;
   gap: 15px;
 }
-
 .compare-item {
   flex: 1;
 }
-
 .label-name {
   font-size: 12px;
   color: #94a3b8;
   font-weight: bold;
 }
-
 .output-block {
   background-color: #0f172a;
   border: 1px solid #1e293b;
@@ -683,18 +662,14 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   min-height: 35px;
 }
-
 .expected-block {
   color: #10b981;
 }
-
-/* AI 报告样式 */
 .ai-report-view {
   height: 150px;
   overflow-y: auto;
   padding-right: 5px;
 }
-
 .ai-markdown-text {
   font-family: inherit;
   font-size: 13.5px;
