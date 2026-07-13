@@ -14,13 +14,13 @@ import java.time.Duration;
 @Configuration
 public class AiConfig {
 
-    @Value("${langchain4j.open-ai.chat-model.base-url:https://api.deepseek.com}")
+    @Value("${langchain4j.open-ai.chat-model.base-url}")
     private String baseUrl;
 
-    @Value("${langchain4j.open-ai.chat-model.api-key:sk-aa801ee91c8443d39e1f6e2d3ffb502b}")
+    @Value("${langchain4j.open-ai.chat-model.api-key}")
     private String apiKey;
 
-    @Value("${langchain4j.open-ai.chat-model.model-name:deepseek-v4-pro}")
+    @Value("${langchain4j.open-ai.chat-model.model-name}")
     private String modelName;
 
     /**
